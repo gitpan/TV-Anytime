@@ -1,0 +1,31 @@
+---
+name: TV-Anytime
+version: 0.29
+author:
+  - Leon Brocard C<acme@astray.com>
+abstract: Parse TV-AnyTime bundles of TV and Radio listings
+license: perl
+requires:
+  Class::Accessor::Chained::Fast: 0
+  DateTime: 0
+  DateTime::Format::Duration: 0
+  DateTime::Format::W3CDTF: 0
+  File::Find::Rule: 0
+  List::Util: 0
+  Path::Class: 0
+  Test::More: 0
+  XML::LibXML: 0
+  XML::LibXML::XPathContext: 0
+provides:
+  TV::Anytime:
+    file: lib/TV/Anytime.pm
+    version: 0.29
+  TV::Anytime::Event:
+    file: lib/TV/Anytime/Event.pm
+  TV::Anytime::Genre:
+    file: lib/TV/Anytime/Genre.pm
+  TV::Anytime::Program:
+    file: lib/TV/Anytime/Program.pm
+  TV::Anytime::Service:
+    file: lib/TV/Anytime/Service.pm
+generated_by: Module::Build version 0.261
