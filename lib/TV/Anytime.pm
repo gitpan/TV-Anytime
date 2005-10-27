@@ -2,20 +2,21 @@ package TV::Anytime;
 use strict;
 use warnings;
 use DateTime;
-use DateTime::Format::W3CDTF;
+use DateTime::Format::ISO8601;
 use DateTime::Format::Duration;
 use File::Find::Rule;
 use List::Util;
 use Path::Class;
 use TV::Anytime::Event;
 use TV::Anytime::Genre;
+use TV::Anytime::Group;
 use TV::Anytime::Program;
 use TV::Anytime::Service;
 use XML::LibXML;
 use XML::LibXML::XPathContext;
 use base 'Class::Accessor::Chained::Fast';
 __PACKAGE__->mk_accessors(qw(directory));
-our $VERSION = '0.29';
+our $VERSION = '0.30';
 
 sub new {
   my $class     = shift;
@@ -35,7 +36,7 @@ sub _find_files {
   my ($self, $id, $type) = @_;
   my @files =
     File::Find::Rule->file->name("*${id}_${type}.xml")->in($self->directory);
-  return @files;
+  return sort @files;
 }
 
 sub _programs {
@@ -68,6 +69,12 @@ sub _program_information {
   return @programs;
 }
 
+my %flags = (
+  'AD' => 'is_audio_described',
+  'S'  => 'is_subtitled',
+  'SL' => 'is_deaf_signed',
+);
+
 sub _program_information_single {
   my ($self, $id, $filename) = @_;
   my $xpc = $self->_parse_file($filename);
@@ -76,7 +83,41 @@ sub _program_information_single {
     my $program = TV::Anytime::Program->new;
     $program->id($node->getAttribute('programId'));
     $program->title($xpc->findvalue(".//tva:Title",       $node));
-    $program->synopsis($xpc->findvalue(".//tva:Synopsis", $node));
+    $program->synopsis($xpc->findvalue(".//tva:Synopsis[attribute::length='short']", $node));
+    $program->synopsis_long($xpc->findvalue(".//tva:Synopsis[attribute::length='long']", $node));
+    
+    # clean up synopsis
+    foreach my $s (qw(synopsis synopsis_long)) {
+      my $synopsis = $program->$s;
+      $synopsis =~s /^(CBeebies:?|CBBC|\[Ages? \d+-\d+\])\.? //;
+      # fix title when title is Julian Fellowes Investigates...
+      # and synopsis is ...a Most Mysterious Murder. The Case of etc.
+      if ($synopsis =~ s/^\.\.\. ?//) {
+        my $title = $program->title;
+        $title =~ s/\.\.\.//;
+        $synopsis =~ s/^(.+?)\. //;
+        if ($1) {
+        $title .= ' ' . $1;
+        $title =~ s/ {2,}/ /;
+        $program->title($title);
+      }
+        
+      }
+      $program->$s($synopsis);
+    }
+    
+    # extract audio described / subtitled / deaf_signed from synopsis
+    foreach my $s (qw(synopsis synopsis_long)) {
+      my $synopsis = $program->$s;   
+      next unless $synopsis =~ s/\[([A-Z,]+)\]//;
+      my $flags = $1;
+      foreach my $flag (split ",", $flags) {
+        my $method = $flags{$flag} || die "No method for $flag";
+        $program->$method(1);
+      }
+      $program->$s($synopsis);
+    }
+    
     $program->caption_language(
       $xpc->findvalue(".//tva:CaptionLanguage", $node));
     $program->audio_channels($xpc->findvalue(".//tva:NumOfChannels", $node));
@@ -90,12 +131,15 @@ sub _program_information_single {
 
     my @genres;
     foreach my $subnode ($self->_xpc($node)->findnodes(".//tva:Genre")) {
-      my $href  = $subnode->getAttribute('href');
+      my $href = $subnode->getAttribute('href');
       $href =~ s/^urn:tva:metadata:cs:(.+?):.+$/$1/;
-      push @genres, TV::Anytime::Genre->new({
-        name  => $href,
-        value => $self->_xpc($subnode)->findvalue("./tva:Name"),
-      });
+      push @genres,
+        TV::Anytime::Genre->new(
+        {
+          name  => $href,
+          value => $self->_xpc($subnode)->findvalue("./tva:Name"),
+        }
+        );
     }
     $program->genres_ref(\@genres);
 
@@ -128,9 +172,46 @@ sub _program_location_single {
     my $duration =
       $self->_parse_duration($nodexpc->findvalue('./tva:PublishedDuration'));
     $event->stop($event->start + $duration);
+
+#    warn $event->crid . ": " . $event->start->datetime . " -> " . $event->stop->datetime . "\n" if $event->start->datetime =~ /2005-08-.?.?T07:00/;
+# eq 'crid://bbc.co.uk/277092412'
+#or $event->crid eq 'crid://bbc.co.uk/277092882';
     push @events, $event;
   }
   return @events;
+}
+
+sub groups {
+  my $self = shift;
+  my @services;
+  my $xpc = $self->_parse_file("groups_cr.xml");
+  my ($members, $parents);
+  foreach my $node ($xpc->findnodes("//cr:Result")) {
+    my $id      = $node->getAttribute("CRID");
+    my @members =
+      map { $_->textContent } $self->_xpc($node)->findnodes(".//cr:Crid");
+    $members->{$id} = \@members;
+    push @{ $parents->{$_} }, $id foreach @members;
+  }
+  $xpc = $self->_parse_file("groups_gr.xml");
+  my @groups;
+  foreach my $node ($xpc->findnodes("//tva:GroupInformation")) {
+    my $id      = $node->getAttribute("groupId");
+    my $members = $members->{$id};
+    next unless $members;
+    push @groups,
+      TV::Anytime::Group->new(
+      {
+        id   => $id,
+        type => $self->_xpc($node)->findnodes("./tva:GroupType")->[0]
+          ->getAttribute("value"),
+        title       => $self->_xpc($node)->findvalue(".//tva:Title"),
+        members_ref => $members,
+        parents_ref => $parents->{$id},
+      }
+      );
+  }
+  return @groups;
 }
 
 sub services {
@@ -191,13 +272,15 @@ sub _xpc {
   my $xpc = XML::LibXML::XPathContext->new($node);
   $xpc->registerNs('tva', 'urn:tva:metadata:2002');
   $xpc->registerNs('rss', 'http://purl.org/rss/1.0/');
+  $xpc->registerNs('cr',
+    'http://www.tv-anytime.org/2002/02/ContentReferencing');
   return $xpc;
 }
 
 sub _parse_date {
   my ($self, $string) = @_;
-  my $f = DateTime::Format::W3CDTF->new;
-  return $f->parse_datetime($string);
+  my $dt = DateTime::Format::ISO8601->parse_datetime($string);
+  return $dt;
 }
 
 sub _parse_duration {
@@ -223,6 +306,7 @@ TV::Anytime - Parse TV-AnyTime bundles of TV and Radio listings
   my @services = $tv->services;
   my @radio_services = $tv->services_radio;
   my @tv_services = $tv->services_television;
+  my @groups = $tv->groups;
 
 =head1 DESCRIPTION
 
@@ -246,6 +330,13 @@ The new() method is the constructor. It takes the directory into which
 you have unpacked the TV-Anytime files:
 
   my $tv = TV::Anytime->new("data/20050701/");
+
+=head2 groups
+
+The groups() method returns a list of all the available groups as a
+list of L<TV::Anytime::Group> objects:
+
+  my @groups = $tv->groups;
 
 =head2 services
 

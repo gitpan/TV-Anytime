@@ -3,6 +3,7 @@ CHANGES
 lib/TV/Anytime.pm
 lib/TV/Anytime/Event.pm
 lib/TV/Anytime/Genre.pm
+lib/TV/Anytime/Group.pm
 lib/TV/Anytime/Program.pm
 lib/TV/Anytime/Service.pm
 Makefile.PL

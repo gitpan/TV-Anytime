@@ -2,21 +2,21 @@
 use ExtUtils::MakeMaker;
 WriteMakefile
 (
-          'PL_FILES' => {},
-          'INSTALLDIRS' => 'site',
           'NAME' => 'TV::Anytime',
           'VERSION_FROM' => 'lib/TV/Anytime.pm',
           'PREREQ_PM' => {
-                           'File::Find::Rule' => '0',
+                           'Class::Accessor::Chained::Fast' => '0',
                            'DateTime' => '0',
                            'DateTime::Format::Duration' => '0',
-                           'XML::LibXML::XPathContext' => '0',
-                           'Test::More' => '0',
+                           'DateTime::Format::ISO8601' => '0',
+                           'File::Find::Rule' => '0',
                            'List::Util' => '0',
-                           'DateTime::Format::W3CDTF' => '0',
-                           'Class::Accessor::Chained::Fast' => '0',
+                           'Path::Class' => '0',
+                           'Test::More' => '0',
                            'XML::LibXML' => '0',
-                           'Path::Class' => '0'
-                         }
+                           'XML::LibXML::XPathContext' => '0'
+                         },
+          'INSTALLDIRS' => 'site',
+          'PL_FILES' => {}
         )
 ;
