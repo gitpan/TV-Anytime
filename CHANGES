@@ -1,5 +1,8 @@
 ChangeLog for TV::Anytime:
 
+0.31 Mon Dec 19 11:25:22 GMT 2005
+  - do not die upon bad data in audio described / subtitled / deaf_signed
+
 0.30 Thu Oct 27 13:45:29 BST 2005
   - added a groups method
   - cleaned up the synopses: synopsis is the short synopsis,

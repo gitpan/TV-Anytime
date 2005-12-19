@@ -16,7 +16,7 @@ use XML::LibXML;
 use XML::LibXML::XPathContext;
 use base 'Class::Accessor::Chained::Fast';
 __PACKAGE__->mk_accessors(qw(directory));
-our $VERSION = '0.30';
+our $VERSION = '0.31';
 
 sub new {
   my $class     = shift;
@@ -112,7 +112,7 @@ sub _program_information_single {
       next unless $synopsis =~ s/\[([A-Z,]+)\]//;
       my $flags = $1;
       foreach my $flag (split ",", $flags) {
-        my $method = $flags{$flag} || die "No method for $flag";
+        my $method = $flags{$flag} || next; # bad data
         $program->$method(1);
       }
       $program->$s($synopsis);
